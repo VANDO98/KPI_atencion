@@ -1,5 +1,5 @@
 .venv/
 __pycache__/
 *.pyc
-logistica_kpi.db
+data/logistica_kpi.db
 .streamlit/

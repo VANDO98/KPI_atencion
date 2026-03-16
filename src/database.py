@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import os
 
-DB_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logistica_kpi.db"))
+DB_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "logistica_kpi.db"))
 
 def get_connection():
     """Retorna una conexión a la base de datos SQLite."""
