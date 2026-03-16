@@ -10,6 +10,15 @@ def get_connection():
 
 def init_db():
     """Inicializa la base de datos y crea la tabla si no existe."""
+    # Asegurar que existan las carpetas data/ y data/ordenes/
+    db_dir = os.path.dirname(DB_NAME)
+    ordenes_dir = os.path.join(db_dir, "ordenes")
+    
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+    if not os.path.exists(ordenes_dir):
+        os.makedirs(ordenes_dir)
+
     conn = get_connection()
     cursor = conn.cursor()
     
