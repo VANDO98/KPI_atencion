@@ -21,9 +21,69 @@ def extraer_cabecera(texto_pagina):
     # Almacén destino: Cocina Materiales
     match_almacen = re.search(r"Almacén destino:\s*(.+)", texto_pagina)
     if match_almacen:
-        almacen_destino = match_almacen.group(1).strip()
+        almacen_destino = match_almacen.group(1).replace('\n', ' ').strip()
+        # Colapsar múltiples espacios
+        almacen_destino = re.sub(r'\s+', ' ', almacen_destino)
         
     return id_orden, almacen_destino
+
+def limpiar_cantidad(val):
+    """
+    Limpia y convierte a float una cantidad, removiendo comas y espacios.
+    """
+    if pd.isna(val) or val == "":
+        return 0.0
+    try:
+        # Eliminar comas (separadores de miles) y espacios
+        val_str = str(val).replace(',', '').strip()
+        return float(val_str)
+    except ValueError:
+        return 0.0
+
+def detectar_columnas(df):
+    """
+    Escanea las primeras filas para encontrar los índices de Cant, Item y Presentación.
+    Retorna un diccionario con los índices. Fallback a [0, 1, 2].
+    """
+    indices = {"Cant": 0, "Item": 1, "Presentacion": 2}
+    
+    for _, row in df.head(10).iterrows():
+        # Convertir toda la fila a string y limpiar
+        row_str = [str(cell).lower().strip() for cell in row]
+        
+        # Buscar columna de Item como ancla
+        item_keywords = ['item', 'artículo', 'articulo', 'descripción', 'descripcion', 'producto']
+        idx_item = -1
+        for kw in item_keywords:
+            if kw in row_str:
+                idx_item = row_str.index(kw)
+                break
+        if 'item' in ' '.join(row_str): # Match parcial por si dice "Nombre de Item"
+            for j, cell in enumerate(row_str):
+                if 'item' in cell:
+                    idx_item = j
+                    break
+                    
+        if idx_item != -1:
+            indices["Item"] = idx_item
+            
+            # Buscar Cantidad
+            for j, cell in enumerate(row_str):
+                if 'cant' in cell and j != idx_item:
+                    # Preferir el que NO sea "Cant. a mover" si hay varios?
+                    # Usualmente "Cant" es la primera columna numérica
+                    indices["Cant"] = j
+                    break
+                    
+            # Buscar Presentación
+            for j, cell in enumerate(row_str):
+                if 'present' in cell and j != idx_item:
+                    indices["Presentacion"] = j
+                    break
+                    
+            return indices
+            
+    return indices
 
 def extraer_tabla(pdf):
     """
@@ -32,7 +92,6 @@ def extraer_tabla(pdf):
     all_rows = []
     
     for page in pdf.pages:
-        # extract_tables() retorna una lista de tablas listas
         tables = page.extract_tables()
         for table in tables:
             if table:
@@ -41,19 +100,26 @@ def extraer_tabla(pdf):
     if not all_rows:
         return pd.DataFrame()
         
-    # Convertir a DataFrame
-    # Las cabeceras suelen estar en la primera fila, pero pueden repetirse.
     df = pd.DataFrame(all_rows)
     
     if df.empty:
         return df
         
-    # Asignar nombres de columnas si coinciden con la cabecera
-    # Cabeceras esperadas: ["Cant", "Item", "Presentacion", "Cant. a mover"]
-    # Usamos las primeras filas para detectar
+    # [NUEVO] Detección Dinámica de Columnas
+    idx_cols = detectar_columnas(df)
     
-    # Renombrar columnas según posición (0, 1, 2)
-    df = df.iloc[:, [0, 1, 2]] # Nos quedamos con Cant, Item, Presentacion
+    # Renombrar columnas según índices detectados
+    idx_cant = idx_cols["Cant"]
+    idx_item = idx_cols["Item"]
+    idx_pres = idx_cols["Presentacion"]
+    
+    # Validar que no sean iguales o desbordados
+    if idx_cant >= len(df.columns) or idx_item >= len(df.columns) or idx_pres >= len(df.columns):
+        # Fallback de emergencia
+        df = df.iloc[:, [0, 1, 2]]
+    else:
+        df = df.iloc[:, [idx_cant, idx_item, idx_pres]]
+        
     df.columns = ["Cantidad_Solicitada", "Item", "Presentacion"]
     
     # Limpieza:
@@ -64,18 +130,11 @@ def extraer_tabla(pdf):
     # 2. Eliminar filas donde Item esté vacío o nulo
     df = df[df["Item"].notna() & (df["Item"].str.strip() != "")]
     
-    # 3. Convertir Cantidad_Solicitada a float
-    # Puede contener comas o puntos. Reemplazamos/limpiamos si es necesario.
-    def convertir_cantidad(val):
-        if pd.isna(val) or val == "":
-            return 0.0
-        try:
-            # Eliminar espacios y convertir
-            return float(str(val).strip())
-        except ValueError:
-            return 0.0
-            
-    df["Cantidad_Solicitada"] = df["Cantidad_Solicitada"].apply(convertir_cantidad)
+    # 2.5. Limpieza extrema de Item (reemplazar \n y espacios múltiples)
+    df["Item"] = df["Item"].astype(str).str.replace(r'\n+', ' ', regex=True).str.strip()
+    df["Item"] = df["Item"].str.replace(r'\s+', ' ', regex=True)
+    
+    df["Cantidad_Solicitada"] = df["Cantidad_Solicitada"].apply(limpiar_cantidad)
     
     return df
 
@@ -144,13 +203,113 @@ def procesar_pdf(pdf_file, semana: str, tipo_requerimiento: str):
         
         return df_final, None
 
+def extraer_cabecera_despacho(texto_pagina):
+    """
+    Extrae ID_Movimiento, ID_Orden_Ref y Fecha_Movimiento de despachos usando regex.
+    """
+    id_movimiento = None
+    id_orden_ref = None
+    fecha_movimiento = None
+    
+    # Movimiento entre almacenes #1180
+    match_movimiento = re.search(r"Movimiento entre almacenes #(\d+)", texto_pagina)
+    if match_movimiento:
+        id_movimiento = int(match_movimiento.group(1))
+        
+    # Orden de movimiento: 1624
+    match_orden = re.search(r"Orden de movimiento:\s*(\d+)", texto_pagina)
+    if match_orden:
+        id_orden_ref = int(match_orden.group(1))
+        
+    # Fecha del movimiento: 14/03/2026
+    match_fecha = re.search(r"Fecha del movimiento:\s*(\d{2}/\d{2}/\d{4})", texto_pagina)
+    if match_fecha:
+        fecha_movimiento = match_fecha.group(1)
+        
+    return id_movimiento, id_orden_ref, fecha_movimiento
+
+def extraer_tabla_despacho(pdf):
+    """
+    Extrae tablas de despachos, limpia texto de saltos de línea y filtra columnas.
+    """
+    all_rows = []
+    
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        for table in tables:
+            if table:
+                all_rows.extend(table)
+                
+    if not all_rows:
+        return pd.DataFrame()
+        
+    df = pd.DataFrame(all_rows)
+    
+    if df.empty:
+        return df
+        
+    # Quedarse con Cant (Index 0) e Item (Index 1)
+    df = df.iloc[:, [0, 1]]
+    df.columns = ["Cantidad_Entregada", "Item"]
+    
+    # Limpieza:
+    df = df[df["Item"] != "Item"]
+    df = df[df["Cantidad_Entregada"] != "Cant"]
+    df = df[df["Item"].notna() & (df["Item"].str.strip() != "")]
+    
+    # Limpieza extrema de Item (reemplazar \n y espacios múltiples)
+    df["Item"] = df["Item"].astype(str).str.replace(r'\n+', ' ', regex=True).str.strip()
+    df["Item"] = df["Item"].str.replace(r'\s+', ' ', regex=True)
+    
+    df["Cantidad_Entregada"] = df["Cantidad_Entregada"].apply(limpiar_cantidad)
+    
+    return df
+
+def procesar_pdf_despacho(pdf_file):
+    """
+    Procesa un archivo PDF de despacho y retorna un DataFrame listo para la BD.
+    """
+    with pdfplumber.open(pdf_file) as pdf:
+        primera_pagina = pdf.pages[0].extract_text() or ""
+        id_movimiento, id_orden_ref, fecha_movimiento = extraer_cabecera_despacho(primera_pagina)
+        
+        df_tabla = extraer_tabla_despacho(pdf)
+        
+        if df_tabla.empty:
+            return pd.DataFrame(), f"No se encontraron tablas en el despacho."
+            
+        # Enriquecimiento
+        df_tabla["ID_Movimiento"] = id_movimiento
+        df_tabla["ID_Orden_Ref"] = id_orden_ref
+        df_tabla["Fecha_Movimiento"] = fecha_movimiento
+        
+        # Consolidar cantidades por Item (sumar) en caso de repetirse
+        if not df_tabla.empty:
+            columnas_agrupamiento = ["ID_Movimiento", "ID_Orden_Ref", "Item", "Fecha_Movimiento"]
+            df_tabla = df_tabla.groupby(columnas_agrupamiento, as_index=False, sort=False).agg({
+                "Cantidad_Entregada": "sum"
+            })
+            
+        columnas_finales = ["ID_Movimiento", "ID_Orden_Ref", "Item", "Cantidad_Entregada", "Fecha_Movimiento"]
+        df_final = df_tabla[columnas_finales]
+        
+        return df_final, None
+
 if __name__ == "__main__":
-    # Script de prueba (se requiere un PDF de prueba)
     import sys
-    if len(sys.argv) > 1:
-        ruta_pdf = sys.argv[1]
+    if len(sys.argv) > 2:
+        tipo_doc = sys.argv[1] # 'orden' o 'despacho'
+        ruta_pdf = sys.argv[2]
+        
         if os.path.exists(ruta_pdf):
-            df, error = procesar_pdf(ruta_pdf, "Semana de Prueba", "Normal")
+            if tipo_doc == "orden":
+                df, error = procesar_pdf(ruta_pdf, "Semana de Prueba", "Normal")
+            elif tipo_doc == "despacho":
+                df, error = procesar_pdf_despacho(ruta_pdf)
+            else:
+                print("Tipo de documento no soportado. Uso: python extractor.py <orden|despacho> <ruta_del_pdf>")
+                sys.exit(1)
+                
             if error:
                 print(f"Error: {error}")
             else:
@@ -158,4 +317,4 @@ if __name__ == "__main__":
         else:
             print(f"Archivo no encontrado: {ruta_pdf}")
     else:
-        print("Uso: python extractor.py <ruta_del_pdf>")
+        print("Uso: python extractor.py <orden|despacho> <ruta_del_pdf>")

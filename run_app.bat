@@ -3,10 +3,10 @@
 cd /d "%~dp0"
 
 echo [1/3] Verificando entorno virtual...
-if not exist ".venv" (
-    echo [AVISO] No se encontró la carpeta .venv. 
+if not exist "venv" (
+    echo [AVISO] No se encontró la carpeta venv. 
     echo Creando entorno virtual con Python...
-    python -m venv .venv
+    python -m venv venv
     
     if %ERRORLEVEL% neq 0 (
         echo [ERROR] No se pudo crear el entorno virtual automáticamente. 
@@ -19,19 +19,22 @@ if not exist ".venv" (
 
 echo [2/3] Instalando / Actualizando dependencias...
 echo Instalar dependencias de requirements.txt...
-.\.venv\Scripts\python -m pip install --upgrade pip
-.\.venv\Scripts\pip install -r requirements.txt
+.\venv\Scripts\python -m pip install --upgrade pip
+.\venv\Scripts\pip install -r requirements.txt
 
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Error al instalar dependencias de requirements.txt.
     pause
     exit /b
 )
-echo ✅ Dependencias actualizadas.
+echo [AVISO] Dependencias actualizadas.
 
-echo [3/3] Iniciando Streamlit...
-:: Usamos python -m streamlit para evitar que el script se cierre en Batch
-.\.venv\Scripts\python -m streamlit run app.py
+echo [2.5/3] Limpiando procesos en puerto 8080...
+powershell -Command "$p = Get-NetTCPConnection -LocalPort 8080 -ErrorAction SilentlyContinue; if ($p) { Stop-Process -Id $p.OwningProcess -Force -ErrorAction SilentlyContinue }"
+
+echo [3/3] Iniciando Servidor Web (FastAPI)...
+start "" "http://localhost:8080"
+.\venv\Scripts\python app_backend.py
 
 if %ERRORLEVEL% neq 0 (
     echo.

@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI Logística - Fill Rate</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Barra Lateral (Sidebar) -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="fa-solid fa-chart-pie logo-icon"></i>
+                <h2>KPI Logística</h2>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" onclick="switchTab('dashboard')">
+                    <i class="fa-solid fa-gauge"></i> Dashboard KPI
+                </button>
+                <button class="nav-item" onclick="switchTab('carga-ordenes')">
+                    <i class="fa-solid fa-file-circle-plus"></i> Cargar Órdenes
+                </button>
+                <button class="nav-item" onclick="switchTab('carga-despachos')">
+                    <i class="fa-solid fa-truck-ramp-box"></i> Cargar Despachos
+                </button>
+                <button class="nav-item" onclick="switchTab('gestor-ordenes')">
+                    <i class="fa-solid fa-list-check"></i> Gestor de Órdenes
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Fase 2 - Fill Rate HORECA</p>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="main-content">
+            
+            <!-- SECCIÓN: DASHBOARD -->
+            <section id="tab-dashboard" class="tab-content active">
+                <header class="content-header">
+                    <h1>Métricas de Nivel de Servicio</h1>
+                    
+                    <div class="filters-container">
+                        <div class="filter-group">
+                            <label><i class="fa-solid fa-calendar-week"></i> Semana</label>
+                            <select id="filtro-semana" onchange="loadKPIs()">
+                                <option value="Todas">Todas</option>
+                                <!-- Se generará dinámicamente -->
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label><i class="fa-solid fa-warehouse"></i> Almacén</label>
+                            <select id="filtro-almacen" onchange="loadKPIs()">
+                                <option value="Todos">Todos</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label><i class="fa-solid fa-tags"></i> Tipo</label>
+                            <select id="filtro-tipo" onchange="loadKPIs()">
+                                <option value="Todos">Todos</option>
+                                <option value="Normal">Normal</option>
+                                <option value="Adicional">Adicional</option>
+                                <option value="Regularización">Regularización</option>
+                            </select>
+                        </div>
+                        <div class="filter-group" style="display: flex; align-items: flex-end;">
+                            <button id="btn-export-excel" onclick="descargarReporteExcel()" style="height: 38px; padding: 0 15px; background: #107c41; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(16, 124, 65, 0.2); transition: all 0.2s; outline: none;">
+                                <i class="fa-solid fa-file-excel"></i> Descargar Excel
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Tarjetas de Métricas (Cards) -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="card-icon icon-volumen"><i class="fa-solid fa-cubes"></i></div>
+                        <div class="card-info">
+                            <h3>Fill Rate Volumen</h3>
+                            <p class="metric-value" id="val-volumen">0.00%</p>
+                            <span class="metric-sub">Eficiencia por cantidad total</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="card-icon icon-item"><i class="fa-solid fa-list-check"></i></div>
+                        <div class="card-info">
+                            <h3>Fill Rate por Ítem</h3>
+                            <p class="metric-value" id="val-item">0.00%</p>
+                            <span class="metric-sub">Garantía de recetas (Promedio)</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="card-icon icon-adicional"><i class="fa-solid fa-circle-plus"></i></div>
+                        <div class="card-info">
+                            <h3>Adicionales</h3>
+                            <p class="metric-value" id="val-adicional">0%</p>
+                            <span class="metric-sub" id="sub-adicional">vs Normales</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="card-icon icon-pop" style="background: rgba(0, 242, 254, 0.1); color: #00f2fe;"><i class="fa-solid fa-square-check"></i></div>
+                        <div class="card-info">
+                            <h3>Órdenes Perfectas</h3>
+                            <p class="metric-value" id="val-pop">0.00%</p>
+                            <span class="metric-sub">Entregadas al 100% (POP)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tablas de Detalles -->
+                <div class="details-container">
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-triangle-exclamation"></i> Backorders (Saldos Pendientes)</h2>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-backorders">
+                                <thead>
+                                    <tr>
+                                        <th>ID Orden</th>
+                                        <th>Item</th>
+                                        <th>Almacén</th>
+                                        <th>Solicitado</th>
+                                        <th>Entregado</th>
+                                        <th>Pendiente</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Datos dinámicos -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Panel Ítems Críticos -->
+                    <div class="table-card" style="margin-top: 25px;">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-arrow-trend-down"></i> Análisis de Ítems Críticos (Deuda vs Semana Anterior)</h2>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-items-criticos">
+                                <thead>
+                                    <tr>
+                                        <th>Ítem</th>
+                                        <th>Deuda Actual</th>
+                                        <th>Deuda Semana Anterior</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dinámico -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: GESTOR DE ÓRDENES -->
+            <section id="tab-gestor-ordenes" class="tab-content">
+                <header class="content-header">
+                    <h1>Gestor de Órdenes</h1>
+                </header>
+                <div style="margin: 0 0 15px 0; max-width: 300px;">
+                    <input type="text" id="buscar-orden-gestor" placeholder="🔍 Buscar por ID de Orden..." style="width: 100%; padding: 8px 12px; background: #1a1f26; color: #fff; border: 1px solid rgba(0, 242, 254, 0.3); border-radius: 6px; font-size: 14px; outline: none;" oninput="filtrarOrdenesGestor()">
+                </div>
+                <div class="details-container" style="margin-top: 20px;">
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-rectangle-list"></i> Lista de Órdenes Cargadas</h2>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-gestor-ordenes">
+                                <thead>
+                                    <tr>
+                                        <th>ID Orden</th>
+                                        <th>Semana Asignada</th>
+                                        <th>Tipo de Requerimiento</th>
+                                        <th style="text-align: center;">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Dinámico -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: CARGA ÓRDENES -->
+            <section id="tab-carga-ordenes" class="tab-content">
+                <header class="content-header">
+                    <h1>Cargar Órdenes de Movimiento</h1>
+                </header>
+                <div class="upload-container">
+                    <div class="upload-form">
+                        <div class="form-group">
+                            <label>Seleccionar Semana:</label>
+                            <select id="upload-orden-semana"></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Tipo de Requerimiento:</label>
+                            <div class="radio-group">
+                                <label><input type="radio" name="tipo_req" value="Normal" checked> Normal</label>
+                                <label><input type="radio" name="tipo_req" value="Adicional"> Adicional</label>
+                                <label><input type="radio" name="tipo_req" value="Regularización"> Regularización</label>
+                            </div>
+                        </div>
+                        <div class="drop-zone" id="drop-zone-orden">
+                            <i class="fa-solid fa-file-pdf"></i>
+                            <p>Arrastra tu PDF aquí o haz clic para seleccionar</p>
+                            <input type="file" id="input-orden" accept="application/pdf" multiple style="display: none;">
+                        </div>
+                        <button class="btn-primary" onclick="uploadPDF('orden')">🚀 Procesar Órdenes</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: CARGA DESPACHOS -->
+            <section id="tab-carga-despachos" class="tab-content">
+                <header class="content-header">
+                    <h1>Cargar Movimientos (Despachos)</h1>
+                </header>
+                <div class="upload-container">
+                    <div class="upload-form">
+                        <div class="drop-zone" id="drop-zone-despacho">
+                            <i class="fa-solid fa-file-invoice"></i>
+                            <p>Arrastra el PDF de Despacho aquí</p>
+                            <input type="file" id="input-despacho" accept="application/pdf" multiple style="display: none;">
+                        </div>
+                        <button class="btn-primary" onclick="uploadPDF('despacho')">🚀 Procesar Despachos</button>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/app.js?v=1.1"></script>
+</body>
+</html>

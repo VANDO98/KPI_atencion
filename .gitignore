@@ -1,5 +1,20 @@
+# Entornos Virtuales
 .venv/
+venv/
+
+# Caches y Debugs
 __pycache__/
 *.pyc
-data/logistica_kpi.db
 .streamlit/
+*.log
+bat_log.txt
+run_app_debug.bat
+
+# Datos Confidenciales y Reportes
+data/*.db
+data/*.sqlite
+data/*.sql
+*.xlsx
+*.csv
+pdfs/
+.vscode/

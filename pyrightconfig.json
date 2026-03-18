@@ -1,0 +1,8 @@
+{
+    "venvPath": "c:/Users/sup_l/Desktop/Antigravity-NKC/KPI_atencion",
+    "venv": "venv",
+    "extraPaths": [
+        "c:/Users/sup_l/Desktop/Antigravity-NKC/KPI_atencion/venv/Lib/site-packages",
+        "c:/Users/sup_l/Desktop/Antigravity-NKC/KPI_atencion/src"
+    ]
+}
