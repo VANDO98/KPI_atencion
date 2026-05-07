@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KPI Logística - Fill Rate</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <!-- Forzar recarga de cache: -->
+    <link rel="stylesheet" href="/static/style.css?v=2.0">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,24 +21,48 @@
         <aside class="sidebar">
             <div class="sidebar-header">
                 <i class="fa-solid fa-chart-pie logo-icon"></i>
-                <h2>KPI Logística</h2>
+                <h2 class="sidebar-logo-text">KPI Logística</h2>
+                <button id="sidebar-toggle" class="sidebar-toggle" title="Contraer/Expandir">
+                    <i class="fa-solid fa-angles-left"></i>
+                </button>
             </div>
             <nav class="nav-menu">
                 <button class="nav-item active" onclick="switchTab('dashboard')">
-                    <i class="fa-solid fa-gauge"></i> Dashboard KPI
+                    <i class="fa-solid fa-gauge"></i> <span>Dashboard KPI</span>
                 </button>
                 <button class="nav-item" onclick="switchTab('carga-ordenes')">
-                    <i class="fa-solid fa-file-circle-plus"></i> Cargar Órdenes
+                    <i class="fa-solid fa-file-circle-plus"></i> <span>Cargar Órdenes</span>
                 </button>
                 <button class="nav-item" onclick="switchTab('carga-despachos')">
-                    <i class="fa-solid fa-truck-ramp-box"></i> Cargar Despachos
+                    <i class="fa-solid fa-truck-ramp-box"></i> <span>Cargar Despachos</span>
                 </button>
                 <button class="nav-item" onclick="switchTab('gestor-ordenes')">
-                    <i class="fa-solid fa-list-check"></i> Gestor de Órdenes
+                    <i class="fa-solid fa-list-check"></i> <span>Gestor de Órdenes</span>
+                </button>
+                <button class="nav-item" onclick="switchTab('gestor-despachos')">
+                    <i class="fa-solid fa-truck-pickup"></i> <span>Gestor de Despachos</span>
+                </button>
+                <button class="nav-item" onclick="switchTab('reportes-analiticos')">
+                    <i class="fa-solid fa-chart-line"></i> <span>Reportes Analíticos</span>
                 </button>
             </nav>
+
+            <!-- SECCIÓN ACCESO COMPARTIDO [NUEVO] -->
+            <div id="server-access-info" style="margin: 20px 15px; padding: 15px; background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.15); border-radius: 12px; font-size: 11px;">
+                <p style="color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Acceso para otros equipos:</p>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <code id="access-url" style="color: var(--accent); font-weight: 800; font-family: 'JetBrains Mono', monospace; background: rgba(0, 0, 0, 0.2); padding: 4px 8px; border-radius: 4px; flex: 1; word-break: break-all;">Cargando...</code>
+                    <button class="btn-icon" onclick="copyAccessUrl()" style="padding: 5px; min-width: 30px; height: 30px;" title="Copiar enlace">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                </div>
+            </div>
+
             <div class="sidebar-footer">
-                <p>Fase 2 - Fill Rate HORECA</p>
+                <button id="theme-toggle" class="nav-item" style="width: 100%; justify-content: center; margin-bottom: 10px;">
+                    <i class="fa-solid fa-moon"></i> <span>Modo Oscuro</span>
+                </button>
+                <p class="sidebar-footer-text">Fase 2 - Fill Rate HORECA</p>
             </div>
         </aside>
 
@@ -71,9 +97,12 @@
                                 <option value="Regularización">Regularización</option>
                             </select>
                         </div>
-                        <div class="filter-group" style="display: flex; align-items: flex-end;">
+                        <div class="filter-group" style="display: flex; align-items: flex-end; gap: 10px;">
                             <button id="btn-export-excel" onclick="descargarReporteExcel()" style="height: 38px; padding: 0 15px; background: #107c41; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(16, 124, 65, 0.2); transition: all 0.2s; outline: none;">
-                                <i class="fa-solid fa-file-excel"></i> Descargar Excel
+                                <i class="fa-solid fa-file-excel"></i> Descargar Faltantes
+                            </button>
+                            <button id="btn-export-excel-adicionales" onclick="descargarReporteAdicionales()" style="height: 38px; padding: 0 15px; background: #ff9800; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(255, 152, 0, 0.2); transition: all 0.2s; outline: none;">
+                                <i class="fa-solid fa-folder-plus"></i> Descargar Adicionales
                             </button>
                         </div>
                     </div>
@@ -109,14 +138,56 @@
                         <div class="card-icon icon-pop" style="background: rgba(0, 242, 254, 0.1); color: #00f2fe;"><i class="fa-solid fa-square-check"></i></div>
                         <div class="card-info">
                             <h3>Órdenes Perfectas</h3>
-                            <p class="metric-value" id="val-pop">0.00%</p>
-                            <span class="metric-sub">Entregadas al 100% (POP)</span>
+                        </div>
+                    </div>
+
+                    <!-- Card 5: Regularizaciones [NUEVO] -->
+                    <div class="metric-card">
+                        <div class="card-icon" style="background: rgba(255, 193, 7, 0.1); color: #ffc107;"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                        <div class="card-info">
+                            <h3>Regularizaciones</h3>
+                            <p class="metric-value" id="val-regularizaciones">0.00%</p>
+                            <span class="metric-sub">% de carga regularizada</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Card 6: Fill Rate Financiero [NUEVO] -->
+                    <div class="metric-card">
+                        <div class="card-icon" style="background: rgba(40, 167, 69, 0.1); color: #28a745;"><i class="fa-solid fa-sack-dollar"></i></div>
+                        <div class="card-info">
+                            <h3>Fill Rate Financiero</h3>
+                            <p class="metric-value" id="val-financiero">0.00%</p>
+                            <span class="metric-sub" id="sub-financiero">S/ 0.00 / S/ 0.00</span>
                         </div>
                     </div>
                 </div>
 
                 <!-- Tablas de Detalles -->
                 <div class="details-container">
+                    <!-- Sección: Desajustes de Nombre (Movido al Dashboard) -->
+                    <div class="table-card" id="card-desajustes-dashboard">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-triangle-exclamation" style="color: #ff9800;"></i> Desajustes de Nombre o Unidad (Fuzzy Fail)</h2>
+                            <p style="color: #888; font-size: 13px; margin-top: 4px;">La orden de movimiento y el registro físico no coinciden en nombre. Regula la unidad/nombre manualmente.</p>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-desajustes">
+                                <thead>
+                                    <tr>
+                                        <th>Doc/Movil</th>
+                                        <th>Orden Ref</th>
+                                        <th>Item Físico (Despachado)</th>
+                                        <th>Cant. Entregada</th>
+                                        <th>Fecha</th>
+                                        <th style="text-align: center;">Vincular A:</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="table-card" style="margin-top: 25px;">
                     <div class="table-card">
                         <div class="table-header">
                             <h2><i class="fa-solid fa-triangle-exclamation"></i> Backorders (Saldos Pendientes)</h2>
@@ -131,6 +202,9 @@
                                         <th>Solicitado</th>
                                         <th>Entregado</th>
                                         <th>Pendiente</th>
+                                        <th>Costo U.</th>
+                                        <th>Deuda (S/)</th>
+                                        <th style="text-align:center;">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -242,10 +316,139 @@
                 </div>
             </section>
 
+            <!-- SECCIÓN: GESTOR DE DESPACHOS [NUEVO] -->
+            <section id="tab-gestor-despachos" class="tab-content">
+                <header class="content-header">
+                    <h1>Gestor de Despachos (Movimientos Huérfanos)</h1>
+                    <button class="btn-primary" onclick="loadOrphanDespachos()"><i class="fa-solid fa-sync"></i> Actualizar</button>
+                </header>
+
+                <div class="gestor-container">
+                    <!-- Sección 1: Movimientos Fantasma -->
+                    <div class="table-card" style="margin-bottom: 30px;">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-ghost"></i> Movimientos Fantasma (Sin Orden)</h2>
+                            <p style="color: #888; font-size: 13px; margin-top: 4px;">Despachos que reportan un ID_Orden que no existe en el sistema.</p>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-fantasmas">
+                                <thead>
+                                    <tr>
+                                        <th>Doc/Movil</th>
+                                        <th>Orden Ref</th>
+                                        <th>Item</th>
+                                        <th>Cant. Entregada</th>
+                                        <th>Fecha</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: REPORTES ANALÍTICOS [NUEVO] -->
+            <section id="tab-reportes-analiticos" class="tab-content">
+                <header class="content-header">
+                    <h1>Reportes y Análisis Histórico</h1>
+                    <button class="btn-primary" onclick="loadReportsSummary()" style="width: auto; padding: 10px 20px;"><i class="fa-solid fa-sync"></i> Recargar Reportes</button>
+                </header>
+
+                <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));">
+                    <div class="table-card">
+                        <div class="table-header"><h2><i class="fa-solid fa-chart-area"></i> Tendencia de Fill Rate (Semanal)</h2></div>
+                        <div class="chart-container" style="position: relative; height:300px; width:100%">
+                            <canvas id="chart-tendencia-fr"></canvas>
+                        </div>
+                    </div>
+                    <div class="table-card">
+                        <div class="table-header"><h2><i class="fa-solid fa-chart-pie"></i> Distribución por Tipo de Pedido</h2></div>
+                        <div class="chart-container" style="position: relative; height:300px; width:100%">
+                            <canvas id="chart-distribucion-tipo"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="details-container">
+                    <div class="table-card">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-table-list"></i> Resumen Consolidado por Semana</h2>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-reporte-semanal">
+                                <thead>
+                                    <tr>
+                                        <th>Semana</th>
+                                        <th>Órdenes</th>
+                                        <th>Ítems</th>
+                                        <th>Vol. Solicitado</th>
+                                        <th>Vol. Entregado</th>
+                                        <th>Fill Rate (Avg)</th>
+                                        <th>Estatus</th>
+                                        <th>Exportar</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="table-card" style="margin-top: 25px;">
+                        <div class="table-header">
+                            <h2><i class="fa-solid fa-warehouse"></i> Desempeño por Almacén / Área</h2>
+                        </div>
+                        <div class="table-responsive">
+                            <table id="tabla-reporte-almacen">
+                                <thead>
+                                    <tr>
+                                        <th>Almacén / Área</th>
+                                        <th>Órdenes Atendidas</th>
+                                        <th>Fill Rate Promedio</th>
+                                        <th>Nivel de Servicio</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
+    <!-- MODAL DETALLE DE ORDEN -->
+    <div id="modal-detalle-orden" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-orden-titulo"><i class="fa-solid fa-box-open"></i> Detalles de la Orden #---</h2>
+                <button class="modal-close" onclick="cerrarModalOrden()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table id="tabla-modal-orden">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Almacén</th>
+                                <th>Costo U.</th>
+                                <th>Soli.</th>
+                                <th>Entr.</th>
+                                <th>Pend.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Dinámico -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
-    <script src="/static/app.js?v=1.1"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/app.js?v=3.1"></script>
 </body>
 </html>

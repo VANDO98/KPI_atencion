@@ -29,61 +29,82 @@ def extraer_cabecera(texto_pagina):
 
 def limpiar_cantidad(val):
     """
-    Limpia y convierte a float una cantidad, removiendo comas y espacios.
+    Limpia y convierte a float una cantidad, removiendo comas, saltos de línea y espacios.
     """
     if pd.isna(val) or val == "":
         return 0.0
     try:
-        # Eliminar comas (separadores de miles) y espacios
-        val_str = str(val).replace(',', '').strip()
+        # Eliminar saltos de línea, comas (miles) y espacios
+        val_str = str(val).replace('\n', ' ').replace('\r', '').replace(',', '').strip()
+        # Eliminar cualquier caracter no numérico excepto punto y signo negativo
+        val_str = re.sub(r'[^\d.\-]', '', val_str)
+        if not val_str or val_str == '.':
+            return 0.0
         return float(val_str)
     except ValueError:
         return 0.0
 
 def detectar_columnas(df):
     """
-    Escanea las primeras filas para encontrar los índices de Cant, Item y Presentación.
-    Retorna un diccionario con los índices. Fallback a [0, 1, 2].
+    Escanea las primeras filas del DataFrame para detectar los índices de columnas clave.
+    Requiere encontrar al menos la columna 'Item' para que la detección sea válida.
+    Fallback seguro: Cant=0, Item=1, Presentacion=2, Costo=-1, Valor=-1.
     """
-    indices = {"Cant": 0, "Item": 1, "Presentacion": 2}
+    indices = {"Cant": 0, "Item": 1, "Presentacion": 2, "Costo": -1, "Valor": -1}
     
     for _, row in df.head(10).iterrows():
-        # Convertir toda la fila a string y limpiar
-        row_str = [str(cell).lower().strip() for cell in row]
+        # Convertir fila a strings limpios (sin newlines)
+        row_str = [str(cell).replace('\n', ' ').lower().strip() for cell in row]
         
-        # Buscar columna de Item como ancla
-        item_keywords = ['item', 'artículo', 'articulo', 'descripción', 'descripcion', 'producto']
+        # --- Buscar columna Item como ancla principal ---
+        item_keywords = ['item', 'artículo', 'articulo', 'descripción', 'descripcion', 'producto', 'nombre']
         idx_item = -1
+        
+        # 1. Coincidencia EXACTA
         for kw in item_keywords:
             if kw in row_str:
                 idx_item = row_str.index(kw)
                 break
-        if 'item' in ' '.join(row_str): # Match parcial por si dice "Nombre de Item"
+        
+        # 2. Coincidencia PARCIAL (ej. "nombre de item")
+        if idx_item == -1:
             for j, cell in enumerate(row_str):
-                if 'item' in cell:
+                if 'item' in cell or 'descripci' in cell or 'producto' in cell:
                     idx_item = j
                     break
                     
-        if idx_item != -1:
-            indices["Item"] = idx_item
+        if idx_item == -1:
+            continue  # Esta fila no tiene cabecera, seguir buscando
             
-            # Buscar Cantidad
-            for j, cell in enumerate(row_str):
-                if 'cant' in cell and j != idx_item:
-                    # Preferir el que NO sea "Cant. a mover" si hay varios?
-                    # Usualmente "Cant" es la primera columna numérica
-                    indices["Cant"] = j
-                    break
-                    
-            # Buscar Presentación
-            for j, cell in enumerate(row_str):
-                if 'present' in cell and j != idx_item:
-                    indices["Presentacion"] = j
-                    break
-                    
-            return indices
-            
-    return indices
+        indices["Item"] = idx_item
+        
+        # --- Buscar Cantidad (primera columna con 'cant' que no sea Item) ---
+        for j, cell in enumerate(row_str):
+            if 'cant' in cell and j != idx_item:
+                indices["Cant"] = j
+                break
+                
+        # --- Buscar Presentación ---
+        for j, cell in enumerate(row_str):
+            if 'present' in cell and j != idx_item:
+                indices["Presentacion"] = j
+                break
+                
+        # --- Buscar Costo ---
+        for j, cell in enumerate(row_str):
+            if any(kw in cell for kw in ['costo', 'p.u', 'precio', 'unit']) and j not in [idx_item, indices["Cant"]]:
+                indices["Costo"] = j
+                break
+                
+        # --- Buscar Valor/Total ---
+        for j, cell in enumerate(row_str):
+            if any(kw in cell for kw in ['valor', 'total', 'monto', 'importe']) and j not in [idx_item, indices["Cant"], indices["Costo"]]:
+                indices["Valor"] = j
+                break
+                
+        return indices  # Retornar con la primera fila válida
+        
+    return indices  # Fallback si ninguna fila tiene cabecera
 
 def extraer_tabla(pdf):
     """
@@ -107,20 +128,35 @@ def extraer_tabla(pdf):
         
     # [NUEVO] Detección Dinámica de Columnas
     idx_cols = detectar_columnas(df)
-    
-    # Renombrar columnas según índices detectados
     idx_cant = idx_cols["Cant"]
     idx_item = idx_cols["Item"]
     idx_pres = idx_cols["Presentacion"]
+    idx_cost = idx_cols.get("Costo", -1)
+    idx_val  = idx_cols.get("Valor", -1)
     
     # Validar que no sean iguales o desbordados
     if idx_cant >= len(df.columns) or idx_item >= len(df.columns) or idx_pres >= len(df.columns):
         # Fallback de emergencia
-        df = df.iloc[:, [0, 1, 2]]
+        df_sub = df.iloc[:, [0, 1, 2]].copy()
+        df_sub.columns = ["Cantidad_Solicitada", "Item", "Presentacion"]
+        df_sub["Costo"] = 0.0
+        df_sub["Valor"] = 0.0
+        df = df_sub
     else:
-        df = df.iloc[:, [idx_cant, idx_item, idx_pres]]
+        df_sub = df.iloc[:, [idx_cant, idx_item, idx_pres]].copy()
+        df_sub.columns = ["Cantidad_Solicitada", "Item", "Presentacion"]
         
-    df.columns = ["Cantidad_Solicitada", "Item", "Presentacion"]
+        if idx_cost != -1 and idx_cost < len(df.columns):
+            df_sub["Costo"] = df.iloc[:, idx_cost]
+        else:
+            df_sub["Costo"] = 0.0
+            
+        if idx_val != -1 and idx_val < len(df.columns):
+            df_sub["Valor"] = df.iloc[:, idx_val]
+        else:
+            df_sub["Valor"] = 0.0
+            
+        df = df_sub
     
     # Limpieza:
     # 1. Eliminar filas que repiten la cabecera (ej. "Cant" o "Item")
@@ -135,6 +171,8 @@ def extraer_tabla(pdf):
     df["Item"] = df["Item"].str.replace(r'\s+', ' ', regex=True)
     
     df["Cantidad_Solicitada"] = df["Cantidad_Solicitada"].apply(limpiar_cantidad)
+    df["Costo"] = df["Costo"].apply(limpiar_cantidad)
+    df["Valor"] = df["Valor"].apply(limpiar_cantidad)
     
     return df
 
@@ -175,7 +213,8 @@ def procesar_pdf(pdf_file, semana: str, tipo_requerimiento: str):
             
         columnas_finales = [
             "ID_Orden", "Item", "Almacen_Destino", "Presentacion", 
-            "Cantidad_Solicitada", "Semana", "Tipo_Requerimiento"
+            "Cantidad_Solicitada", "Semana", "Tipo_Requerimiento",
+            "Costo", "Valor"
         ]
         df_final = df_tabla[columnas_finales]
         
@@ -191,15 +230,21 @@ def procesar_pdf(pdf_file, semana: str, tipo_requerimiento: str):
             
             df_final = df_final.groupby(columnas_agrupamiento, as_index=False, sort=False).agg({
                 "Cantidad_Solicitada": "sum",
+                "Costo": "mean",
+                "Valor": "sum",
                 "Fila_Original": "min" # Nos quedamos con la posición de la primera vez que apareció
             })
             
             # Reordenar columnas para mantener consistencia con database.py
+            # NOTA: Costo y Valor se guardan ahora en despachos_reales, no en requerimientos_originales
             columnas_finales_db = [
                 "ID_Orden", "Item", "Almacen_Destino", "Presentacion", 
                 "Cantidad_Solicitada", "Semana", "Tipo_Requerimiento", "Fila_Original"
             ]
-            df_final = df_final[columnas_finales_db]
+            # Solo incluir Costo/Valor en el df si las columnas existen
+            df_final["Costo"] = 0.0
+            df_final["Valor"] = 0.0
+            df_final = df_final[columnas_finales_db + ["Costo", "Valor"]]
         
         return df_final, None
 
@@ -248,9 +293,36 @@ def extraer_tabla_despacho(pdf):
     if df.empty:
         return df
         
-    # Quedarse con Cant (Index 0) e Item (Index 1)
-    df = df.iloc[:, [0, 1]]
-    df.columns = ["Cantidad_Entregada", "Item"]
+    # [NUEVO] Detección Dinámica de Columnas en Despacho
+    idx_cols = detectar_columnas(df)
+    idx_cant = idx_cols["Cant"]
+    idx_item = idx_cols["Item"]
+    idx_cost = idx_cols.get("Costo", -1)
+    idx_val  = idx_cols.get("Valor", -1)
+    
+    # Validar que no sean iguales o desbordados
+    if idx_cant >= len(df.columns) or idx_item >= len(df.columns):
+        # Fallback de emergencia
+        df_sub = df.iloc[:, [0, 1]].copy()
+        df_sub.columns = ["Cantidad_Entregada", "Item"]
+        df_sub["Costo"] = 0.0
+        df_sub["Valor"] = 0.0
+        df = df_sub
+    else:
+        df_sub = df.iloc[:, [idx_cant, idx_item]].copy()
+        df_sub.columns = ["Cantidad_Entregada", "Item"]
+        
+        if idx_cost != -1 and idx_cost < len(df.columns):
+            df_sub["Costo"] = df.iloc[:, idx_cost]
+        else:
+            df_sub["Costo"] = 0.0
+            
+        if idx_val != -1 and idx_val < len(df.columns):
+            df_sub["Valor"] = df.iloc[:, idx_val]
+        else:
+            df_sub["Valor"] = 0.0
+            
+        df = df_sub
     
     # Limpieza:
     df = df[df["Item"] != "Item"]
@@ -262,6 +334,8 @@ def extraer_tabla_despacho(pdf):
     df["Item"] = df["Item"].str.replace(r'\s+', ' ', regex=True)
     
     df["Cantidad_Entregada"] = df["Cantidad_Entregada"].apply(limpiar_cantidad)
+    df["Costo"] = df["Costo"].apply(limpiar_cantidad)
+    df["Valor"] = df["Valor"].apply(limpiar_cantidad)
     
     return df
 
@@ -287,10 +361,12 @@ def procesar_pdf_despacho(pdf_file):
         if not df_tabla.empty:
             columnas_agrupamiento = ["ID_Movimiento", "ID_Orden_Ref", "Item", "Fecha_Movimiento"]
             df_tabla = df_tabla.groupby(columnas_agrupamiento, as_index=False, sort=False).agg({
-                "Cantidad_Entregada": "sum"
+                "Cantidad_Entregada": "sum",
+                "Costo": "mean",
+                "Valor": "sum"
             })
             
-        columnas_finales = ["ID_Movimiento", "ID_Orden_Ref", "Item", "Cantidad_Entregada", "Fecha_Movimiento"]
+        columnas_finales = ["ID_Movimiento", "ID_Orden_Ref", "Item", "Cantidad_Entregada", "Fecha_Movimiento", "Costo", "Valor"]
         df_final = df_tabla[columnas_finales]
         
         return df_final, None
