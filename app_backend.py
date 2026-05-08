@@ -139,12 +139,14 @@ async def get_kpi(
     df_kpi = df_kpi[~df_kpi["Tipo_Requerimiento"].isin(["Regularización", "Regularizacion"])]
         
     # 1. Fill Rate Global por Volumen
-    suma_solicitada = df_kpi["Cantidad_Solicitada"].sum()
-    suma_entregada = df_kpi["Cantidad_Entregada"].sum()
+    suma_solicitada = df_kpi["Cantidad_Solicitada"].sum() if not df_kpi.empty else 0
+    suma_entregada = df_kpi["Cantidad_Entregada"].sum() if not df_kpi.empty else 0
     fill_rate_volumen = (suma_entregada / suma_solicitada) * 100 if suma_solicitada > 0 else 0
     
     # 2. Fill Rate Global por Ítem (Promedio Simple)
-    fill_rate_item = df_kpi["Fill_Rate_Porcentaje"].mean()
+    fill_rate_item = df_kpi["Fill_Rate_Porcentaje"].mean() if not df_kpi.empty else 0
+    if pd.isna(fill_rate_item):
+        fill_rate_item = 0
     
     # [NUEVO] 2.5. Fill Rate Financiero
     df_fin = df_kpi[df_kpi["Costo"] > 0]
@@ -164,6 +166,8 @@ async def get_kpi(
     items_adicionales_count = len(df_adicionales)
     porcentaje_adicionales = (items_adicionales_count / items_normales_count) * 100 if items_normales_count > 0 else 0
     fill_rate_adicional = df_adicionales["Fill_Rate_Porcentaje"].mean() if not df_adicionales.empty else 0
+    if pd.isna(fill_rate_adicional):
+        fill_rate_adicional = 0
     
     # 4. Porcentaje de Órdenes Perfectas (POP)
     df_ordenes_pop = df_kpi.groupby("ID_Orden")["Cantidad_Pendiente"].sum().reset_index()
